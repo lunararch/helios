@@ -43,6 +43,14 @@ func main() {
 		gl.Viewport(0, 0, int32(width), int32(height))
 	})
 
+	gl.Enable(gl.BLEND)
+	gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+
+	gl.Enable(gl.DEPTH_TEST)
+	gl.DepthFunc(gl.LESS)
+
+	gl.ClearColor(0.2, 0.3, 0.8, 1.0)
+
 	window.SetKeyCallback(func(w *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
 		// Close on Escape key press
 		if key == glfw.KeyEscape && action == glfw.Press {
@@ -51,6 +59,8 @@ func main() {
 	})
 
 	for !window.ShouldClose() {
+		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+
 		window.SwapBuffers()
 		glfw.PollEvents()
 	}
