@@ -5,6 +5,7 @@ import (
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/lunararch/helios/pkg/graphics/shader"
+	"github.com/lunararch/helios/pkg/graphics/texture"
 	"runtime"
 )
 
@@ -80,23 +81,15 @@ func main() {
 	gl.VertexAttribPointer(1, 2, gl.FLOAT, false, 5*4, gl.PtrOffset(3*4))
 	gl.EnableVertexAttribArray(1)
 
-	var texture uint32
-	gl.GenTextures(1, &texture)
-	gl.BindTexture(gl.TEXTURE_2D, texture)
-
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-
-	whitePixel := []byte{255, 255, 255, 255}
-	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(whitePixel))
+	textureImg, err := texture.LoadFromFile("assets/textures/knight.png")
+	if err != nil {
+		panic(err)
+	}
+	defer textureImg.Delete()
 
 	shaderProgram.Use()
-
 	shaderProgram.SetInt("texture1", 0)
-
-	shaderProgram.SetVec4("color", mgl32.Vec4{1.0, 0.5, 0.2, 1.0})
+	shaderProgram.SetVec4("color", mgl32.Vec4{1.0, 1.0, 1.0, 1.0})
 
 	projection := mgl32.Ortho(0, 640, 480, 0, -1, 1)
 	shaderProgram.SetMat4("projection", projection)
@@ -119,8 +112,7 @@ func main() {
 
 		shaderProgram.Use()
 
-		gl.ActiveTexture(gl.TEXTURE0)
-		gl.BindTexture(gl.TEXTURE_2D, texture)
+		textureImg.Bind(0)
 
 		gl.BindVertexArray(VAO)
 		gl.DrawArrays(gl.TRIANGLES, 0, 3)
@@ -131,5 +123,4 @@ func main() {
 
 	gl.DeleteVertexArrays(1, &VAO)
 	gl.DeleteBuffers(1, &VBO)
-	gl.DeleteTextures(1, &texture)
 }
