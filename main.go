@@ -59,7 +59,42 @@ func main() {
 	}
 	defer shaderProgram.Delete()
 
+	vertices := []float32{
+		320.0, 100.0, 0.0, 0.5, 0.0,
+		220.0, 300.0, 0.0, 0.0, 1.0,
+		420.0, 300.0, 0.0, 1.0, 1.0,
+	}
+
+	var VAO uint32
+	gl.GenVertexArrays(1, &VAO)
+	gl.BindVertexArray(VAO)
+
+	var VBO uint32
+	gl.GenBuffers(1, &VBO)
+	gl.BindBuffer(gl.ARRAY_BUFFER, VBO)
+	gl.BufferData(gl.ARRAY_BUFFER, len(vertices)*4, gl.Ptr(vertices), gl.STATIC_DRAW)
+
+	gl.VertexAttribPointer(0, 3, gl.FLOAT, false, 5*4, gl.PtrOffset(0))
+	gl.EnableVertexAttribArray(0)
+
+	gl.VertexAttribPointer(1, 2, gl.FLOAT, false, 5*4, gl.PtrOffset(3*4))
+	gl.EnableVertexAttribArray(1)
+
+	var texture uint32
+	gl.GenTextures(1, &texture)
+	gl.BindTexture(gl.TEXTURE_2D, texture)
+
+	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
+	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
+	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+
+	whitePixel := []byte{255, 255, 255, 255}
+	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(whitePixel))
+
 	shaderProgram.Use()
+
+	shaderProgram.SetInt("texture1", 0)
 
 	shaderProgram.SetVec4("color", mgl32.Vec4{1.0, 0.5, 0.2, 1.0})
 
@@ -68,6 +103,9 @@ func main() {
 
 	view := mgl32.Ident4()
 	shaderProgram.SetMat4("view", view)
+
+	model := mgl32.Ident4()
+	shaderProgram.SetMat4("model", model)
 
 	window.SetKeyCallback(func(w *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
 		// Close on Escape key press
@@ -81,7 +119,17 @@ func main() {
 
 		shaderProgram.Use()
 
+		gl.ActiveTexture(gl.TEXTURE0)
+		gl.BindTexture(gl.TEXTURE_2D, texture)
+
+		gl.BindVertexArray(VAO)
+		gl.DrawArrays(gl.TRIANGLES, 0, 3)
+
 		window.SwapBuffers()
 		glfw.PollEvents()
 	}
+
+	gl.DeleteVertexArrays(1, &VAO)
+	gl.DeleteBuffers(1, &VBO)
+	gl.DeleteTextures(1, &texture)
 }
