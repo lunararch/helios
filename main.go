@@ -4,6 +4,7 @@ import (
 	"github.com/go-gl/gl/all-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/lunararch/helios/pkg/engine"
 	"github.com/lunararch/helios/pkg/graphics/camera"
 	"github.com/lunararch/helios/pkg/graphics/shader"
 	"github.com/lunararch/helios/pkg/graphics/sprite"
@@ -44,10 +45,6 @@ func main() {
 	width, height := window.GetSize()
 	gl.Viewport(0, 0, int32(width), int32(height))
 
-	window.SetFramebufferSizeCallback(func(w *glfw.Window, width, height int) {
-		gl.Viewport(0, 0, int32(width), int32(height))
-	})
-
 	gl.Enable(gl.BLEND)
 	gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
@@ -68,9 +65,6 @@ func main() {
 	batchShader.Use()
 	batchShader.SetInt("texture1", 0)
 	batchShader.SetMat4("projection", projection)
-
-	//spriteRenderer := sprite.NewRenderer(shaderProgram)
-	//defer spriteRenderer.Delete()
 
 	spriteBatch := sprite.NewSpriteBatch(batchShader)
 	defer spriteBatch.Delete()
@@ -99,29 +93,26 @@ func main() {
 		mgl32.Vec2{float32(hornetTexture.Width), float32(hornetTexture.Height)},
 	)
 
-	var sprites []*sprite.Sprite
-	for i := 0; i < 100; i++ {
-		s := sprite.NewSprite(
-			knightTexture,
-			mgl32.Vec3{float32(i%10) * 50.0, float32(i/10) * 50.0, 0.0},
-			mgl32.Vec2{32, 32},
-		)
-
-		s.Color = mgl32.Vec4{
-			float32(i%3)*0.3 + 0.7,
-			float32((i+1)%3)*0.3 + 0.7,
-			float32((i+2)%3)*0.3 + 0.7,
-			1.0,
-		}
-		sprites = append(sprites, s)
-	}
+	//var sprites []*sprite.Sprite
+	//for i := 0; i < 100; i++ {
+	//	s := sprite.NewSprite(
+	//		knightTexture,
+	//		mgl32.Vec3{float32(i%10) * 50.0, float32(i/10) * 50.0, 0.0},
+	//		mgl32.Vec2{32, 32},
+	//	)
+	//
+	//	s.Color = mgl32.Vec4{
+	//		float32(i%3)*0.3 + 0.7,
+	//		float32((i+1)%3)*0.3 + 0.7,
+	//		float32((i+2)%3)*0.3 + 0.7,
+	//		1.0,
+	//	}
+	//	sprites = append(sprites, s)
+	//}
 
 	gameCamera.Position = mgl32.Vec2{float32(width) / 2, float32(height) / 2}
-
 	gameCamera.SetBounds(0, 0, float32(width), float32(height))
-
 	cameraSpeed := float32(200.0)
-	lastFrameTime := glfw.GetTime()
 
 	window.SetKeyCallback(func(w *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
 		// Close on Escape key press
@@ -138,11 +129,12 @@ func main() {
 		batchShader.SetMat4("projection", projection)
 	})
 
-	for !window.ShouldClose() {
-		currentTime := glfw.GetTime()
-		deltaTime := float32(currentTime - lastFrameTime)
-		lastFrameTime = currentTime
+	gameLoop := engine.NewGameLoop(window)
 
+	gameLoop.UseFixedTimestep(true)
+	gameLoop.SetTargetFPS(60)
+
+	gameLoop.SetUpdateFunc(func(deltaTime float32) {
 		if window.GetKey(glfw.KeyW) == glfw.Press {
 			gameCamera.Position[1] -= cameraSpeed * deltaTime
 		}
@@ -169,27 +161,28 @@ func main() {
 			}
 		}
 
-		gameCamera.ClampToBounds()
+		knightSprite.Rotation += deltaTime * 1.0
 
+		gameCamera.Update(deltaTime)
+		gameCamera.ClampToBounds()
+	})
+
+	gameLoop.SetRenderFunc(func(alpha float32) {
 		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
 		batchShader.Use()
 		batchShader.SetMat4("view", gameCamera.GetViewMatrix())
 
-		//spriteRenderer.DrawSprite(knightSprite)
-
 		spriteBatch.Begin()
-
-		for _, s := range sprites {
-			spriteBatch.Draw(s)
-		}
+		//for _, s := range sprites {
+		//	spriteBatch.Draw(s)
+		//}
 
 		spriteBatch.Draw(knightSprite)
-		spriteBatch.Draw(hornetSprite) // This will cause a flush since texture changes
+		spriteBatch.Draw(hornetSprite)
 
 		spriteBatch.End()
+	})
 
-		window.SwapBuffers()
-		glfw.PollEvents()
-	}
+	gameLoop.Start()
 }
