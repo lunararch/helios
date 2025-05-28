@@ -56,37 +56,69 @@ func main() {
 
 	gl.ClearColor(0.2, 0.3, 0.8, 1.0)
 
-	width, height = window.GetSize()
 	gameCamera := camera.New(float32(width), float32(height))
 
-	shaderProgram, err := shader.New("assets/shaders/basic.vert", "assets/shaders/basic.frag")
+	batchShader, err := shader.New("assets/shaders/batch.vert", "assets/shaders/batch.frag")
 	if err != nil {
 		panic(err)
 	}
-	defer shaderProgram.Delete()
-
-	spriteRenderer := sprite.NewRenderer(shaderProgram)
-	defer spriteRenderer.Delete()
-
-	textureImg, err := texture.LoadFromFile("assets/textures/knight.png")
-	if err != nil {
-		panic(err)
-	}
-	defer textureImg.Delete()
-
-	knightSprite := sprite.NewSprite(
-		textureImg,
-		mgl32.Vec3{200.0, 100.0, 0.0},
-		mgl32.Vec2{float32(textureImg.Width), float32(textureImg.Height)},
-	)
+	defer batchShader.Delete()
 
 	projection := mgl32.Ortho(0, 640, 480, 0, -1, 1)
-	shaderProgram.Use()
-	shaderProgram.SetInt("texture1", 0)
-	shaderProgram.SetMat4("projection", projection)
-	//shaderProgram.SetMat4("view", mgl32.Ident4())
+	batchShader.Use()
+	batchShader.SetInt("texture1", 0)
+	batchShader.SetMat4("projection", projection)
+
+	//spriteRenderer := sprite.NewRenderer(shaderProgram)
+	//defer spriteRenderer.Delete()
+
+	spriteBatch := sprite.NewSpriteBatch(batchShader)
+	defer spriteBatch.Delete()
+
+	knightTexture, err := texture.LoadFromFile("assets/textures/knight.png")
+	if err != nil {
+		panic(err)
+	}
+	defer knightTexture.Delete()
+
+	hornetTexture, err := texture.LoadFromFile("assets/textures/hornet.png")
+	if err != nil {
+		panic(err)
+	}
+	defer hornetTexture.Delete()
+
+	knightSprite := sprite.NewSprite(
+		knightTexture,
+		mgl32.Vec3{100.0, 100.0, 0.0},
+		mgl32.Vec2{float32(knightTexture.Width), float32(knightTexture.Height)},
+	)
+
+	hornetSprite := sprite.NewSprite(
+		hornetTexture,
+		mgl32.Vec3{300.0, 200.0, 0.0},
+		mgl32.Vec2{float32(hornetTexture.Width), float32(hornetTexture.Height)},
+	)
+
+	var sprites []*sprite.Sprite
+	for i := 0; i < 100; i++ {
+		s := sprite.NewSprite(
+			knightTexture,
+			mgl32.Vec3{float32(i%10) * 50.0, float32(i/10) * 50.0, 0.0},
+			mgl32.Vec2{32, 32},
+		)
+
+		s.Color = mgl32.Vec4{
+			float32(i%3)*0.3 + 0.7,
+			float32((i+1)%3)*0.3 + 0.7,
+			float32((i+2)%3)*0.3 + 0.7,
+			1.0,
+		}
+		sprites = append(sprites, s)
+	}
 
 	gameCamera.Position = mgl32.Vec2{float32(width) / 2, float32(height) / 2}
+
+	gameCamera.SetBounds(0, 0, float32(width), float32(height))
 
 	cameraSpeed := float32(200.0)
 	lastFrameTime := glfw.GetTime()
@@ -102,8 +134,8 @@ func main() {
 		gl.Viewport(0, 0, int32(width), int32(height))
 		gameCamera.Size = mgl32.Vec2{float32(width), float32(height)}
 		projection := mgl32.Ortho(0, float32(width), float32(height), 0, -1, 1)
-		shaderProgram.Use()
-		shaderProgram.SetMat4("projection", projection)
+		batchShader.Use()
+		batchShader.SetMat4("projection", projection)
 	})
 
 	for !window.ShouldClose() {
@@ -111,16 +143,16 @@ func main() {
 		deltaTime := float32(currentTime - lastFrameTime)
 		lastFrameTime = currentTime
 
-		if window.GetKey(glfw.KeyS) == glfw.Press {
+		if window.GetKey(glfw.KeyW) == glfw.Press {
 			gameCamera.Position[1] -= cameraSpeed * deltaTime
 		}
-		if window.GetKey(glfw.KeyW) == glfw.Press {
+		if window.GetKey(glfw.KeyS) == glfw.Press {
 			gameCamera.Position[1] += cameraSpeed * deltaTime
 		}
-		if window.GetKey(glfw.KeyD) == glfw.Press {
+		if window.GetKey(glfw.KeyA) == glfw.Press {
 			gameCamera.Position[0] -= cameraSpeed * deltaTime
 		}
-		if window.GetKey(glfw.KeyA) == glfw.Press {
+		if window.GetKey(glfw.KeyD) == glfw.Press {
 			gameCamera.Position[0] += cameraSpeed * deltaTime
 		}
 
@@ -141,10 +173,21 @@ func main() {
 
 		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-		shaderProgram.Use()
-		shaderProgram.SetMat4("view", gameCamera.GetViewMatrix())
+		batchShader.Use()
+		batchShader.SetMat4("view", gameCamera.GetViewMatrix())
 
-		spriteRenderer.DrawSprite(knightSprite)
+		//spriteRenderer.DrawSprite(knightSprite)
+
+		spriteBatch.Begin()
+
+		for _, s := range sprites {
+			spriteBatch.Draw(s)
+		}
+
+		spriteBatch.Draw(knightSprite)
+		spriteBatch.Draw(hornetSprite) // This will cause a flush since texture changes
+
+		spriteBatch.End()
 
 		window.SwapBuffers()
 		glfw.PollEvents()
