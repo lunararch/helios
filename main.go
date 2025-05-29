@@ -69,6 +69,10 @@ func main() {
 	inputMapping.MapKey("zoom_in", glfw.KeyE)
 	inputMapping.MapKey("zoom_out", glfw.KeyQ)
 	inputMapping.MapKey("quit", glfw.KeyEscape)
+	inputMapping.MapKey("pause", glfw.KeyP)
+	inputMapping.MapKey("slow_motion", glfw.KeyLeftShift)
+	inputMapping.MapKey("fast_forward", glfw.KeyTab)
+	inputMapping.MapKey("reset_time", glfw.KeyR)
 
 	inputManager.AddInputCallback(func(event input.InputEvent) {
 		switch e := event.(type) {
@@ -140,11 +144,50 @@ func main() {
 	gameLoop.UseFixedTimestep(true)
 	gameLoop.SetTargetFPS(60)
 
+	rotationTimer := engine.NewRepeatingTimer(2.0)
+	rotationTimer.SetOnComplete(func() {
+		// Reverse the rotation direction
+		// You could implement this by storing rotation direction in a variable
+	})
+	rotationTimer.Start()
+
+	printTimer := engine.NewTimer(5.0)
+	printTimer.SetOnComplete(func() {
+		timeManager := gameLoop.TimeManager()
+		println("=== Performance Stats ===")
+		println("FPS:", timeManager.FPS())
+		println("Avg Delta:", timeManager.AvgDeltaTime())
+		println("Min Delta:", timeManager.MinDeltaTime())
+		println("Max Delta:", timeManager.MaxDeltaTime())
+		println("Frame Count:", timeManager.FrameCount())
+		println("Time Scale:", timeManager.TimeScale())
+		println("========================")
+		printTimer.Restart()
+	})
+	printTimer.Start()
+
 	gameLoop.SetUpdateFunc(func(deltaTime float32) {
-		// Update input system
 		inputManager.Update()
 
-		// Handle camera movement using input mapping
+		if inputMapping.IsActionPressed("pause", inputManager) {
+			gameLoop.TogglePause()
+		}
+
+		if inputMapping.IsActionPressed("reset_time", inputManager) {
+			gameLoop.TimeManager().ResetPerformanceStats()
+		}
+
+		if inputMapping.IsActionHeld("slow_motion", inputManager) {
+			gameLoop.SetTimeScale(0.3)
+		} else if inputMapping.IsActionHeld("fast_forward", inputManager) {
+			gameLoop.SetTimeScale(2.0)
+		} else {
+			gameLoop.SetTimeScale(1.0)
+		}
+
+		rotationTimer.Update(deltaTime)
+		printTimer.Update(deltaTime)
+
 		if inputMapping.IsActionHeld("move_up", inputManager) {
 			gameCamera.Position[1] -= cameraSpeed * deltaTime
 		}
@@ -191,6 +234,7 @@ func main() {
 			}
 		}
 
+		// Animate sprite rotation (affected by time scale)
 		knightSprite.Rotation += deltaTime * 1.0
 
 		gameCamera.Update(deltaTime)

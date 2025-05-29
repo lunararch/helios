@@ -2,7 +2,6 @@ package engine
 
 import (
 	"github.com/go-gl/glfw/v3.3/glfw"
-	"time"
 )
 
 const (
@@ -11,31 +10,24 @@ const (
 )
 
 type UpdateFunc func(deltaTime float32)
-
 type RenderFunc func(alpha float32)
 
 type GameLoop struct {
-	window         *glfw.Window
-	fixedTimestep  bool
-	targetFPS      int
-	fixedDeltaTime float64
-	running        bool
-	accumulator    float64
-	updateFunc     UpdateFunc
-	renderFunc     RenderFunc
-	lastFrameTime  float64
-	currentFPS     float32
-	fpsUpdateTime  float64
-	frameCount     int
+	window        *glfw.Window
+	timeManager   *TimeManager
+	fixedTimestep bool
+	running       bool
+	accumulator   float64
+	updateFunc    UpdateFunc
+	renderFunc    RenderFunc
 }
 
 func NewGameLoop(window *glfw.Window) *GameLoop {
 	return &GameLoop{
-		window:         window,
-		fixedTimestep:  true,
-		targetFPS:      60,
-		fixedDeltaTime: DefaultFixedDeltaTime,
-		running:        false,
+		window:        window,
+		timeManager:   NewTimeManager(),
+		fixedTimestep: true,
+		running:       false,
 	}
 }
 
@@ -52,14 +44,31 @@ func (gl *GameLoop) UseFixedTimestep(fixed bool) {
 }
 
 func (gl *GameLoop) SetTargetFPS(fps int) {
-	gl.targetFPS = fps
-	if fps > 0 {
-		gl.fixedDeltaTime = 1.0 / float64(fps)
-	}
+	gl.timeManager.SetTargetFPS(fps)
+}
+
+func (gl *GameLoop) TimeManager() *TimeManager {
+	return gl.timeManager
 }
 
 func (gl *GameLoop) GetCurrentFPS() float32 {
-	return gl.currentFPS
+	return gl.timeManager.FPS()
+}
+
+func (gl *GameLoop) PauseGame() {
+	gl.timeManager.Pause()
+}
+
+func (gl *GameLoop) ResumeGame() {
+	gl.timeManager.Resume()
+}
+
+func (gl *GameLoop) TogglePause() {
+	gl.timeManager.TogglePause()
+}
+
+func (gl *GameLoop) SetTimeScale(scale float64) {
+	gl.timeManager.SetTimeScale(scale)
 }
 
 func (gl *GameLoop) Start() {
@@ -68,10 +77,7 @@ func (gl *GameLoop) Start() {
 	}
 
 	gl.running = true
-	gl.lastFrameTime = glfw.GetTime()
 	gl.accumulator = 0
-	gl.frameCount = 0
-	gl.fpsUpdateTime = gl.lastFrameTime
 
 	if gl.fixedTimestep {
 		gl.fixedTimeStepLoop()
@@ -80,84 +86,53 @@ func (gl *GameLoop) Start() {
 	}
 }
 
+func (gl *GameLoop) Stop() {
+	gl.running = false
+}
+
 func (gl *GameLoop) fixedTimeStepLoop() {
 	for gl.running && !gl.window.ShouldClose() {
-		currentTime := glfw.GetTime()
-		deltaTime := currentTime - gl.lastFrameTime
-		gl.lastFrameTime = currentTime
+		gl.timeManager.Update()
+
+		deltaTime := gl.timeManager.UnscaledDeltaTime()
 
 		if deltaTime > MaxDeltaTime {
 			deltaTime = MaxDeltaTime
 		}
 
-		gl.accumulator += deltaTime
+		gl.accumulator += float64(deltaTime)
 
-		for gl.accumulator >= gl.fixedDeltaTime {
-			gl.updateFunc(float32(gl.fixedDeltaTime))
-			gl.accumulator -= gl.fixedDeltaTime
+		for gl.accumulator >= DefaultFixedDeltaTime {
+			gl.updateFunc(gl.timeManager.DeltaTime())
+			gl.accumulator -= DefaultFixedDeltaTime
 		}
 
-		alpha := float32(gl.accumulator / gl.fixedDeltaTime)
-
+		alpha := float32(gl.accumulator / DefaultFixedDeltaTime)
 		gl.renderFunc(alpha)
-
-		gl.updateFPS(currentTime)
 
 		gl.window.SwapBuffers()
 		glfw.PollEvents()
 
-		if gl.targetFPS > 0 {
-			gl.limitFPS()
-		}
+		gl.timeManager.SleepForFrameLimit()
 	}
 }
 
 func (gl *GameLoop) variableTimestepLoop() {
 	for gl.running && !gl.window.ShouldClose() {
-		currentTime := glfw.GetTime()
-		deltaTime := currentTime - gl.lastFrameTime
-		gl.lastFrameTime = currentTime
+		gl.timeManager.Update()
+
+		deltaTime := gl.timeManager.DeltaTime()
 
 		if deltaTime > MaxDeltaTime {
 			deltaTime = MaxDeltaTime
 		}
 
-		gl.updateFunc(float32(deltaTime))
-
+		gl.updateFunc(deltaTime)
 		gl.renderFunc(1.0)
-
-		gl.updateFPS(currentTime)
 
 		gl.window.SwapBuffers()
 		glfw.PollEvents()
 
-		if gl.targetFPS > 0 {
-			gl.limitFPS()
-		}
-	}
-}
-
-func (gl *GameLoop) updateFPS(currentTime float64) {
-	gl.frameCount++
-
-	if currentTime-gl.fpsUpdateTime >= 1.0 {
-		gl.currentFPS = float32(gl.frameCount) / float32(currentTime-gl.fpsUpdateTime)
-		gl.fpsUpdateTime = currentTime
-		gl.frameCount = 0
-	}
-}
-
-func (gl *GameLoop) limitFPS() {
-	if gl.targetFPS <= 0 {
-		return
-	}
-
-	frameDuration := 1.0 / float64(gl.targetFPS)
-
-	elapsed := glfw.GetTime() - gl.lastFrameTime
-
-	if elapsed < frameDuration {
-		sleepTime := time.Duration((frameDuration - elapsed) * 1000000000)
-		time.Sleep(sleepTime)
+		gl.timeManager.SleepForFrameLimit()
 	}
 }
