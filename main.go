@@ -1,6 +1,8 @@
 package main
 
 import (
+	"runtime"
+
 	"github.com/go-gl/gl/all-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
@@ -9,7 +11,7 @@ import (
 	"github.com/lunararch/helios/pkg/graphics/shader"
 	"github.com/lunararch/helios/pkg/graphics/sprite"
 	"github.com/lunararch/helios/pkg/graphics/texture"
-	"runtime"
+	"github.com/lunararch/helios/pkg/input"
 )
 
 func init() {
@@ -53,6 +55,34 @@ func main() {
 
 	gl.ClearColor(0.2, 0.3, 0.8, 1.0)
 
+	inputManager := input.NewInputManager(window)
+	inputMapping := input.NewInputMapping()
+
+	inputMapping.MapKey("move_up", glfw.KeyW)
+	inputMapping.MapKey("move_up", glfw.KeyUp)
+	inputMapping.MapKey("move_down", glfw.KeyS)
+	inputMapping.MapKey("move_down", glfw.KeyDown)
+	inputMapping.MapKey("move_left", glfw.KeyA)
+	inputMapping.MapKey("move_left", glfw.KeyLeft)
+	inputMapping.MapKey("move_right", glfw.KeyD)
+	inputMapping.MapKey("move_right", glfw.KeyRight)
+	inputMapping.MapKey("zoom_in", glfw.KeyE)
+	inputMapping.MapKey("zoom_out", glfw.KeyQ)
+	inputMapping.MapKey("quit", glfw.KeyEscape)
+
+	inputManager.AddInputCallback(func(event input.InputEvent) {
+		switch e := event.(type) {
+		case input.KeyPressEvent:
+			if e.Key == glfw.KeyEscape {
+				window.SetShouldClose(true)
+			}
+		case input.MousePressEvent:
+			// Handle mouse clicks
+		case input.MouseScrollEvent:
+			// Handle scroll events
+		}
+	})
+
 	gameCamera := camera.New(float32(width), float32(height))
 
 	batchShader, err := shader.New("assets/shaders/batch.vert", "assets/shaders/batch.frag")
@@ -93,33 +123,9 @@ func main() {
 		mgl32.Vec2{float32(hornetTexture.Width), float32(hornetTexture.Height)},
 	)
 
-	//var sprites []*sprite.Sprite
-	//for i := 0; i < 100; i++ {
-	//	s := sprite.NewSprite(
-	//		knightTexture,
-	//		mgl32.Vec3{float32(i%10) * 50.0, float32(i/10) * 50.0, 0.0},
-	//		mgl32.Vec2{32, 32},
-	//	)
-	//
-	//	s.Color = mgl32.Vec4{
-	//		float32(i%3)*0.3 + 0.7,
-	//		float32((i+1)%3)*0.3 + 0.7,
-	//		float32((i+2)%3)*0.3 + 0.7,
-	//		1.0,
-	//	}
-	//	sprites = append(sprites, s)
-	//}
-
 	gameCamera.Position = mgl32.Vec2{float32(width) / 2, float32(height) / 2}
 	gameCamera.SetBounds(0, 0, float32(width), float32(height))
 	cameraSpeed := float32(200.0)
-
-	window.SetKeyCallback(func(w *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
-		// Close on Escape key press
-		if key == glfw.KeyEscape && action == glfw.Press {
-			w.SetShouldClose(true)
-		}
-	})
 
 	window.SetFramebufferSizeCallback(func(w *glfw.Window, width, height int) {
 		gl.Viewport(0, 0, int32(width), int32(height))
@@ -135,27 +141,51 @@ func main() {
 	gameLoop.SetTargetFPS(60)
 
 	gameLoop.SetUpdateFunc(func(deltaTime float32) {
-		if window.GetKey(glfw.KeyW) == glfw.Press {
+		// Update input system
+		inputManager.Update()
+
+		// Handle camera movement using input mapping
+		if inputMapping.IsActionHeld("move_up", inputManager) {
 			gameCamera.Position[1] -= cameraSpeed * deltaTime
 		}
-		if window.GetKey(glfw.KeyS) == glfw.Press {
+		if inputMapping.IsActionHeld("move_down", inputManager) {
 			gameCamera.Position[1] += cameraSpeed * deltaTime
 		}
-		if window.GetKey(glfw.KeyA) == glfw.Press {
+		if inputMapping.IsActionHeld("move_left", inputManager) {
 			gameCamera.Position[0] -= cameraSpeed * deltaTime
 		}
-		if window.GetKey(glfw.KeyD) == glfw.Press {
+		if inputMapping.IsActionHeld("move_right", inputManager) {
 			gameCamera.Position[0] += cameraSpeed * deltaTime
 		}
 
-		if window.GetKey(glfw.KeyQ) == glfw.Press {
+		if inputMapping.IsActionHeld("zoom_out", inputManager) {
 			gameCamera.Zoom *= (1.0 - deltaTime)
 			if gameCamera.Zoom < 0.1 {
 				gameCamera.Zoom = 0.1
 			}
 		}
-		if window.GetKey(glfw.KeyE) == glfw.Press {
+		if inputMapping.IsActionHeld("zoom_in", inputManager) {
 			gameCamera.Zoom *= (1.0 + deltaTime)
+			if gameCamera.Zoom > 10.0 {
+				gameCamera.Zoom = 10.0
+			}
+		}
+
+		// Example of using mouse input
+		if inputManager.IsMouseButtonPressed(input.MouseButtonLeft) {
+			mousePos := inputManager.GetMousePosition()
+			// Do something with mouse click at mousePos
+			_ = mousePos
+		}
+
+		// Handle scroll wheel for zoom
+		scrollDelta := inputManager.GetScrollDelta()
+		if scrollDelta.Y() != 0 {
+			zoomFactor := 1.0 + scrollDelta.Y()*0.1
+			gameCamera.Zoom *= zoomFactor
+			if gameCamera.Zoom < 0.1 {
+				gameCamera.Zoom = 0.1
+			}
 			if gameCamera.Zoom > 10.0 {
 				gameCamera.Zoom = 10.0
 			}
@@ -174,13 +204,8 @@ func main() {
 		batchShader.SetMat4("view", gameCamera.GetViewMatrix())
 
 		spriteBatch.Begin()
-		//for _, s := range sprites {
-		//	spriteBatch.Draw(s)
-		//}
-
 		spriteBatch.Draw(knightSprite)
 		spriteBatch.Draw(hornetSprite)
-
 		spriteBatch.End()
 	})
 
