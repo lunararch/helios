@@ -32,6 +32,7 @@ type InputManager struct {
 	mouseDelta      mgl32.Vec2
 	scrollDelta     mgl32.Vec2
 	inputCallbacks  []InputCallback
+	deltaTime       float32 // Add this field
 }
 
 type InputCallback func(event InputEvent)
@@ -273,4 +274,12 @@ func (im *InputManager) IsCtrlHeld() bool {
 
 func (im *InputManager) IsAltHeld() bool {
 	return im.IsKeyHeld(glfw.KeyLeftAlt) || im.IsKeyHeld(glfw.KeyRightAlt)
+}
+
+func (im *InputManager) SetDeltaTime(dt float32) {
+	im.deltaTime = dt
+}
+
+func (im *InputManager) GetDeltaTime() float32 {
+	return im.deltaTime
 }

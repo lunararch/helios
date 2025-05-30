@@ -8,10 +8,8 @@ import (
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/lunararch/helios/pkg/engine"
 	"github.com/lunararch/helios/pkg/graphics/camera"
-	"github.com/lunararch/helios/pkg/graphics/shader"
-	"github.com/lunararch/helios/pkg/graphics/sprite"
-	"github.com/lunararch/helios/pkg/graphics/texture"
 	"github.com/lunararch/helios/pkg/input"
+	"github.com/lunararch/helios/pkg/scene"
 )
 
 func init() {
@@ -55,6 +53,7 @@ func main() {
 
 	gl.ClearColor(0.2, 0.3, 0.8, 1.0)
 
+	// Setup input system
 	inputManager := input.NewInputManager(window)
 	inputMapping := input.NewInputMapping()
 
@@ -73,102 +72,65 @@ func main() {
 	inputMapping.MapKey("slow_motion", glfw.KeyLeftShift)
 	inputMapping.MapKey("fast_forward", glfw.KeyTab)
 	inputMapping.MapKey("reset_time", glfw.KeyR)
+	inputMapping.MapKey("menu", glfw.KeyM)
 
+	// Setup camera
+	gameCamera := camera.New(float32(width), float32(height))
+	gameCamera.Position = mgl32.Vec2{float32(width) / 2, float32(height) / 2}
+	gameCamera.SetBounds(0, 0, float32(width), float32(height))
+
+	// Setup scene management
+	sceneManager := scene.NewSceneManager()
+	defer sceneManager.Cleanup()
+
+	// Create and register scenes
+	menuScene := scene.NewMenuScene(gameCamera)
+	gameplayScene := scene.NewGameplayScene(gameCamera)
+
+	sceneManager.RegisterScene(menuScene)
+	sceneManager.RegisterScene(gameplayScene)
+
+	// Start with menu scene
+	sceneManager.SwitchToScene("menu")
+
+	// Setup input callbacks for scene switching
 	inputManager.AddInputCallback(func(event input.InputEvent) {
 		switch e := event.(type) {
 		case input.KeyPressEvent:
-			if e.Key == glfw.KeyEscape {
+			switch e.Key {
+			case glfw.KeyEscape:
 				window.SetShouldClose(true)
+			case glfw.KeyEnter:
+				if sceneManager.GetCurrentScene().GetName() == "menu" {
+					sceneManager.SwitchToScene("gameplay")
+				}
+			case glfw.KeyM:
+				currentScene := sceneManager.GetCurrentScene().GetName()
+				if currentScene == "gameplay" {
+					sceneManager.PushScene("menu")
+				} else if currentScene == "menu" {
+					sceneManager.PopScene()
+				}
 			}
-		case input.MousePressEvent:
-			// Handle mouse clicks
-		case input.MouseScrollEvent:
-			// Handle scroll events
 		}
 	})
 
-	gameCamera := camera.New(float32(width), float32(height))
-
-	batchShader, err := shader.New("assets/shaders/batch.vert", "assets/shaders/batch.frag")
-	if err != nil {
-		panic(err)
-	}
-	defer batchShader.Delete()
-
-	projection := mgl32.Ortho(0, 640, 480, 0, -1, 1)
-	batchShader.Use()
-	batchShader.SetInt("texture1", 0)
-	batchShader.SetMat4("projection", projection)
-
-	spriteBatch := sprite.NewSpriteBatch(batchShader)
-	defer spriteBatch.Delete()
-
-	knightTexture, err := texture.LoadFromFile("assets/textures/knight.png")
-	if err != nil {
-		panic(err)
-	}
-	defer knightTexture.Delete()
-
-	hornetTexture, err := texture.LoadFromFile("assets/textures/hornet.png")
-	if err != nil {
-		panic(err)
-	}
-	defer hornetTexture.Delete()
-
-	knightSprite := sprite.NewSprite(
-		knightTexture,
-		mgl32.Vec3{100.0, 100.0, 0.0},
-		mgl32.Vec2{float32(knightTexture.Width), float32(knightTexture.Height)},
-	)
-
-	hornetSprite := sprite.NewSprite(
-		hornetTexture,
-		mgl32.Vec3{300.0, 200.0, 0.0},
-		mgl32.Vec2{float32(hornetTexture.Width), float32(hornetTexture.Height)},
-	)
-
-	gameCamera.Position = mgl32.Vec2{float32(width) / 2, float32(height) / 2}
-	gameCamera.SetBounds(0, 0, float32(width), float32(height))
-	cameraSpeed := float32(200.0)
-
+	// Setup window resize callback
 	window.SetFramebufferSizeCallback(func(w *glfw.Window, width, height int) {
 		gl.Viewport(0, 0, int32(width), int32(height))
 		gameCamera.Size = mgl32.Vec2{float32(width), float32(height)}
-		projection := mgl32.Ortho(0, float32(width), float32(height), 0, -1, 1)
-		batchShader.Use()
-		batchShader.SetMat4("projection", projection)
 	})
 
+	// Setup game loop
 	gameLoop := engine.NewGameLoop(window)
-
 	gameLoop.UseFixedTimestep(true)
 	gameLoop.SetTargetFPS(60)
 
-	rotationTimer := engine.NewRepeatingTimer(2.0)
-	rotationTimer.SetOnComplete(func() {
-		// Reverse the rotation direction
-		// You could implement this by storing rotation direction in a variable
-	})
-	rotationTimer.Start()
-
-	printTimer := engine.NewTimer(5.0)
-	printTimer.SetOnComplete(func() {
-		timeManager := gameLoop.TimeManager()
-		println("=== Performance Stats ===")
-		println("FPS:", timeManager.FPS())
-		println("Avg Delta:", timeManager.AvgDeltaTime())
-		println("Min Delta:", timeManager.MinDeltaTime())
-		println("Max Delta:", timeManager.MaxDeltaTime())
-		println("Frame Count:", timeManager.FrameCount())
-		println("Time Scale:", timeManager.TimeScale())
-		println("========================")
-		printTimer.Restart()
-	})
-	printTimer.Start()
-
 	gameLoop.SetUpdateFunc(func(deltaTime float32) {
+		inputManager.SetDeltaTime(deltaTime)
 		inputManager.Update()
 
+		// Global input handling
 		if inputMapping.IsActionPressed("pause", inputManager) {
 			gameLoop.TogglePause()
 		}
@@ -185,73 +147,25 @@ func main() {
 			gameLoop.SetTimeScale(1.0)
 		}
 
-		rotationTimer.Update(deltaTime)
-		printTimer.Update(deltaTime)
+		// Update scene manager
+		sceneManager.Update(deltaTime)
 
-		if inputMapping.IsActionHeld("move_up", inputManager) {
-			gameCamera.Position[1] -= cameraSpeed * deltaTime
-		}
-		if inputMapping.IsActionHeld("move_down", inputManager) {
-			gameCamera.Position[1] += cameraSpeed * deltaTime
-		}
-		if inputMapping.IsActionHeld("move_left", inputManager) {
-			gameCamera.Position[0] -= cameraSpeed * deltaTime
-		}
-		if inputMapping.IsActionHeld("move_right", inputManager) {
-			gameCamera.Position[0] += cameraSpeed * deltaTime
-		}
-
-		if inputMapping.IsActionHeld("zoom_out", inputManager) {
-			gameCamera.Zoom *= (1.0 - deltaTime)
-			if gameCamera.Zoom < 0.1 {
-				gameCamera.Zoom = 0.1
-			}
-		}
-		if inputMapping.IsActionHeld("zoom_in", inputManager) {
-			gameCamera.Zoom *= (1.0 + deltaTime)
-			if gameCamera.Zoom > 10.0 {
-				gameCamera.Zoom = 10.0
-			}
-		}
-
-		// Example of using mouse input
-		if inputManager.IsMouseButtonPressed(input.MouseButtonLeft) {
-			mousePos := inputManager.GetMousePosition()
-			// Do something with mouse click at mousePos
-			_ = mousePos
-		}
-
-		// Handle scroll wheel for zoom
-		scrollDelta := inputManager.GetScrollDelta()
-		if scrollDelta.Y() != 0 {
-			zoomFactor := 1.0 + scrollDelta.Y()*0.1
-			gameCamera.Zoom *= zoomFactor
-			if gameCamera.Zoom < 0.1 {
-				gameCamera.Zoom = 0.1
-			}
-			if gameCamera.Zoom > 10.0 {
-				gameCamera.Zoom = 10.0
-			}
-		}
-
-		// Animate sprite rotation (affected by time scale)
-		knightSprite.Rotation += deltaTime * 1.0
-
-		gameCamera.Update(deltaTime)
-		gameCamera.ClampToBounds()
+		// Let current scene handle input
+		sceneManager.HandleInput(inputManager, inputMapping)
 	})
 
 	gameLoop.SetRenderFunc(func(alpha float32) {
-		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-
-		batchShader.Use()
-		batchShader.SetMat4("view", gameCamera.GetViewMatrix())
-
-		spriteBatch.Begin()
-		spriteBatch.Draw(knightSprite)
-		spriteBatch.Draw(hornetSprite)
-		spriteBatch.End()
+		// Scene manager handles rendering
+		sceneManager.Render(alpha)
 	})
+
+	println("Controls:")
+	println("Enter - Switch from menu to gameplay")
+	println("M - Toggle between menu and gameplay")
+	println("WASD/Arrow Keys - Move camera (in gameplay)")
+	println("E/Q - Zoom in/out (in gameplay)")
+	println("P - Pause")
+	println("Escape - Quit")
 
 	gameLoop.Start()
 }
