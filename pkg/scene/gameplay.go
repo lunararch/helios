@@ -1,9 +1,12 @@
 package scene
 
 import (
+	"math"
+
 	"github.com/go-gl/gl/all-core/gl"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/lunararch/helios/pkg/engine"
+	"github.com/lunararch/helios/pkg/entity"
 	"github.com/lunararch/helios/pkg/graphics/camera"
 	"github.com/lunararch/helios/pkg/graphics/shader"
 	"github.com/lunararch/helios/pkg/graphics/sprite"
@@ -17,11 +20,13 @@ type GameplayScene struct {
 	batchShader *shader.Shader
 	spriteBatch *sprite.SpriteBatch
 
-	knightSprite *sprite.Sprite
-	hornetSprite *sprite.Sprite
+	world *entity.World
 
 	knightTexture *texture.Texture
 	hornetTexture *texture.Texture
+
+	knightEntity *entity.Entity
+	hornetEntity *entity.Entity
 
 	rotationTimer *engine.Timer
 	printTimer    *engine.Timer
@@ -64,28 +69,41 @@ func (s *GameplayScene) Load() error {
 		return err
 	}
 
-	s.knightSprite = sprite.NewSprite(
-		s.knightTexture,
-		mgl32.Vec3{100.0, 100.0, 0.0},
-		mgl32.Vec2{float32(s.knightTexture.Width), float32(s.knightTexture.Height)},
-	)
+	s.world = entity.NewWorld()
 
-	s.hornetSprite = sprite.NewSprite(
-		s.hornetTexture,
-		mgl32.Vec3{300.0, 200.0, 0.0},
-		mgl32.Vec2{float32(s.hornetTexture.Width), float32(s.hornetTexture.Height)},
-	)
+	s.knightEntity = s.world.CreateEntity("Knight")
+	s.knightEntity.GetTransform().SetPosition2D(100.0, 100.0)
+
+	knightSprite := entity.NewSpriteComponent(s.knightTexture, s.spriteBatch)
+	s.knightEntity.AddComponent(knightSprite)
+
+	s.hornetEntity = s.world.CreateEntity("Hornet")
+	s.hornetEntity.GetTransform().SetPosition2D(300.0, 200.0)
+
+	hornetSprite := entity.NewSpriteComponent(s.hornetTexture, s.spriteBatch)
+	s.hornetEntity.AddComponent(hornetSprite)
+
+	weaponEntity := s.world.CreateEntity("Knight's Weapon")
+	weaponEntity.SetParent(s.knightEntity)
+	weaponEntity.GetTransform().SetPosition2D(50.0, 0.0) // Relative to knight
+	weaponEntity.GetTransform().SetUniformScale(0.5)
+
+	weaponSprite := entity.NewSpriteComponent(s.hornetTexture, s.spriteBatch)
+	weaponSprite.SetColor(mgl32.Vec4{1.0, 0.5, 0.5, 1.0}) // Reddish tint
+	weaponEntity.AddComponent(weaponSprite)
 
 	s.rotationTimer = engine.NewRepeatingTimer(2.0)
 	s.rotationTimer.SetOnComplete(func() {
-		// Could implement rotation direction reversal here
+		s.knightEntity.GetTransform().Rotate(0.5)
 	})
 	s.rotationTimer.Start()
 
 	s.printTimer = engine.NewTimer(5.0)
 	s.printTimer.SetOnComplete(func() {
 		println("=== Gameplay Scene Stats ===")
-		println("Knight position:", s.knightSprite.Position.X(), s.knightSprite.Position.Y())
+		println("Entity count:", s.world.GetEntityCount())
+		println("Knight position:", s.knightEntity.GetTransform().Position.X(), s.knightEntity.GetTransform().Position.Y())
+		println("Knight world position:", s.knightEntity.GetWorldPosition().X(), s.knightEntity.GetWorldPosition().Y())
 		println("Camera position:", s.camera.Position.X(), s.camera.Position.Y())
 		println("Camera zoom:", s.camera.Zoom)
 		println("============================")
@@ -109,6 +127,9 @@ func (s *GameplayScene) Unload() error {
 	if s.hornetTexture != nil {
 		s.hornetTexture.Delete()
 	}
+	if s.world != nil {
+		s.world.Cleanup()
+	}
 
 	return s.BaseScene.Unload()
 }
@@ -125,7 +146,20 @@ func (s *GameplayScene) Update(deltaTime float32) error {
 	s.rotationTimer.Update(deltaTime)
 	s.printTimer.Update(deltaTime)
 
-	s.knightSprite.Rotation += deltaTime * 1.0
+	s.world.Update(deltaTime)
+
+	if s.hornetEntity != nil {
+		time := s.printTimer.GetProgress() * 6.28 // 2 * PI
+		transform := s.hornetEntity.GetTransform()
+		baseX := float32(300.0)
+		baseY := float32(200.0)
+		radius := float32(50.0)
+
+		newX := baseX + radius*float32(math.Cos(float64(time)))
+		newY := baseY + radius*float32(math.Sin(float64(time)))
+
+		transform.SetPosition2D(newX, newY)
+	}
 
 	return nil
 }
@@ -137,8 +171,9 @@ func (s *GameplayScene) Render(alpha float32) error {
 	s.batchShader.SetMat4("view", s.camera.GetViewMatrix())
 
 	s.spriteBatch.Begin()
-	s.spriteBatch.Draw(s.knightSprite)
-	s.spriteBatch.Draw(s.hornetSprite)
+
+	s.world.Render(alpha)
+
 	s.spriteBatch.End()
 
 	return nil
