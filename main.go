@@ -29,7 +29,7 @@ func main() {
 	glfw.WindowHint(glfw.OpenGLDebugContext, glfw.True)
 	glfw.WindowHint(glfw.Resizable, glfw.True)
 
-	window, err := glfw.CreateWindow(640, 480, "Helios", nil, nil)
+	window, err := glfw.CreateWindow(640, 480, "Helios - Animation System", nil, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -53,7 +53,6 @@ func main() {
 
 	gl.ClearColor(0.2, 0.3, 0.8, 1.0)
 
-	// Setup input system
 	inputManager := input.NewInputManager(window)
 	inputMapping := input.NewInputMapping()
 
@@ -74,26 +73,23 @@ func main() {
 	inputMapping.MapKey("reset_time", glfw.KeyR)
 	inputMapping.MapKey("menu", glfw.KeyM)
 
-	// Setup camera
 	gameCamera := camera.New(float32(width), float32(height))
 	gameCamera.Position = mgl32.Vec2{float32(width) / 2, float32(height) / 2}
 	gameCamera.SetBounds(0, 0, float32(width), float32(height))
 
-	// Setup scene management
 	sceneManager := scene.NewSceneManager()
 	defer sceneManager.Cleanup()
 
-	// Create and register scenes
 	menuScene := scene.NewMenuScene(gameCamera)
 	gameplayScene := scene.NewGameplayScene(gameCamera)
+	animatedGameplayScene := scene.NewAnimatedGameplayScene(gameCamera)
 
 	sceneManager.RegisterScene(menuScene)
 	sceneManager.RegisterScene(gameplayScene)
+	sceneManager.RegisterScene(animatedGameplayScene)
 
-	// Start with menu scene
 	sceneManager.SwitchToScene("menu")
 
-	// Setup input callbacks for scene switching
 	inputManager.AddInputCallback(func(event input.InputEvent) {
 		switch e := event.(type) {
 		case input.KeyPressEvent:
@@ -102,26 +98,31 @@ func main() {
 				window.SetShouldClose(true)
 			case glfw.KeyEnter:
 				if sceneManager.GetCurrentScene().GetName() == "menu" {
-					sceneManager.SwitchToScene("gameplay")
+					sceneManager.SwitchToScene("animated_gameplay")
 				}
 			case glfw.KeyM:
 				currentScene := sceneManager.GetCurrentScene().GetName()
-				if currentScene == "gameplay" {
+				if currentScene == "animated_gameplay" {
 					sceneManager.PushScene("menu")
 				} else if currentScene == "menu" {
 					sceneManager.PopScene()
+				}
+			case glfw.KeyG:
+				currentScene := sceneManager.GetCurrentScene().GetName()
+				if currentScene == "gameplay" {
+					sceneManager.SwitchToScene("animated_gameplay")
+				} else if currentScene == "animated_gameplay" {
+					sceneManager.SwitchToScene("gameplay")
 				}
 			}
 		}
 	})
 
-	// Setup window resize callback
 	window.SetFramebufferSizeCallback(func(w *glfw.Window, width, height int) {
 		gl.Viewport(0, 0, int32(width), int32(height))
 		gameCamera.Size = mgl32.Vec2{float32(width), float32(height)}
 	})
 
-	// Setup game loop
 	gameLoop := engine.NewGameLoop(window)
 	gameLoop.UseFixedTimestep(true)
 	gameLoop.SetTargetFPS(60)
@@ -130,7 +131,6 @@ func main() {
 		inputManager.SetDeltaTime(deltaTime)
 		inputManager.Update()
 
-		// Global input handling
 		if inputMapping.IsActionPressed("pause", inputManager) {
 			gameLoop.TogglePause()
 		}
@@ -147,23 +147,22 @@ func main() {
 			gameLoop.SetTimeScale(1.0)
 		}
 
-		// Update scene manager
 		sceneManager.Update(deltaTime)
 
-		// Let current scene handle input
 		sceneManager.HandleInput(inputManager, inputMapping)
 	})
 
 	gameLoop.SetRenderFunc(func(alpha float32) {
-		// Scene manager handles rendering
 		sceneManager.Render(alpha)
 	})
 
 	println("Controls:")
-	println("Enter - Switch from menu to gameplay")
-	println("M - Toggle between menu and gameplay")
-	println("WASD/Arrow Keys - Move camera (in gameplay)")
-	println("E/Q - Zoom in/out (in gameplay)")
+	println("Enter - Switch from menu to animated gameplay")
+	println("M - Toggle between animated gameplay and menu")
+	println("G - Switch between regular and animated gameplay")
+	println("WASD/Arrow Keys - Move camera")
+	println("E/Q - Zoom in/out")
+	println("1/2/3 - Control animations (Idle/Walk/Jump)")
 	println("P - Pause")
 	println("Escape - Quit")
 
